@@ -1116,3 +1116,55 @@ test "CustomParser, lossyCast" {
         .y = -20,
     }, pos);
 }
+
+test "Asset @evalBranchQuota" {
+    // @setEvalBranchQuota(10000000);
+    const Asset = struct {
+        id: []const u8,
+        cusip: ?[]const u8,
+        class: []const u8,
+        exchange: []const u8,
+        symbol: []const u8,
+        name: []const u8,
+        status: struct {},
+        tradable: bool,
+        marginable: bool,
+        maintenance_margin_requirement: i32,
+        margin_requirement_long: []const u8,
+        margin_requirement_short: []const u8,
+        shortable: bool,
+        easy_to_borrow: bool,
+        fractionable: bool,
+        attributes: [][]const u8,
+    };
+
+    var parser = Parser.init;
+    defer parser.deinit(allocator);
+    const document = try parser.parseFromSlice(allocator,
+        \\{
+        \\  "id": "123456789012345678",
+        \\  "cusip": null,
+        \\  "class": "common",
+        \\  "exchange": "NYSE",
+        \\  "symbol": "AAPL",
+        \\  "name": "Apple Inc.",
+        \\  "status": {},
+        \\  "tradable": true,
+        \\  "marginable": true,
+        \\  "maintenance_margin_requirement": 0,
+        \\  "margin_requirement_long": "0.0",
+        \\  "margin_requirement_short": "0.0",
+        \\  "shortable": true,
+        \\  "easy_to_borrow": true,
+        \\  "fractionable": true,
+        \\  "attributes": [
+        \\    "optionable", "dividend_eligible",
+        \\    "non_marginable", "non_loanable"
+        \\  ]
+        \\}
+    );
+
+    const asset = try document.as(Asset, allocator, .{});
+    defer asset.deinit();
+    try std.testing.expectEqualStrings("NYSE", asset.value.exchange);
+}

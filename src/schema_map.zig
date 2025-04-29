@@ -94,12 +94,12 @@ const StaticLayout = struct {
     pub fn from(n: usize) StaticLayout {
         const table_len = std.math.log2_int_ceil(usize, n);
         return switch (n) {
-            0...20 => .{
+            0...13 => .{
                 .index = u8,
                 .table_len = 1 << (table_len + 0),
                 .collisions = 2,
             },
-            21...27 => .{
+            14...27 => .{
                 .index = u8,
                 .table_len = 1 << (table_len + 1),
                 .collisions = 2,
