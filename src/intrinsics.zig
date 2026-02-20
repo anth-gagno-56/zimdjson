@@ -31,7 +31,7 @@ pub inline fn clmul(quotes_mask: umask) umask {
     }
 }
 
-pub inline fn lookupTable(table: vector, nibbles: vector) vector {
+pub inline fn OLD_lookupTable(table: vector, nibbles: vector) vector {
     switch (cpu.arch) {
         .x86_64 => {
             return asm (
@@ -51,6 +51,20 @@ pub inline fn lookupTable(table: vector, nibbles: vector) vector {
         },
         else => @compileError("Intrinsic not implemented for this target"),
     }
+}
+
+pub inline fn lookupTable(table: vector, nibbles: vector) vector {
+    var result: vector = undefined;
+
+    // Zig's 'inline for' over a range or vector allows the compiler
+    // to unroll the logic into a single SIMD instruction.
+    inline for (0..Vector.bytes_len) |i| {
+        // The & 0x0F mimics the behavior of vpshufb/tbl
+        // which only look at the lower 4 bits.
+        result[i] = table[nibbles[i] & 0x0F];
+    }
+
+    return result;
 }
 
 // only used in x86_64
