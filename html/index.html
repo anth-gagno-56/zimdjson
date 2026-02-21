@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>zimdjson WASM Example</title>
+</head>
+<body>
+
+<h1>zimdjson — WebAssembly JSON parser</h1>
+
+<p>
+  This page demonstrates the
+  <a href="https://github.com/EzequielRamis/zimdjson">zimdjson</a>
+  library compiled to WebAssembly.<br>
+  Paste <strong>any valid JSON</strong> into the box and it will be parsed
+  and pretty-printed entirely inside the browser — no server involved.<br>
+  The Zig source for the WASM module lives in <code>example/wasm.zig</code>.
+</p>
+
+<hr>
+
+<h2>Input</h2>
+
+<p>
+  <button id="loadDefaultBtn">Load sample data.json</button>
+  &nbsp;
+  <button id="clearBtn">Clear</button>
+</p>
+
+<p>Paste any JSON below, then click <strong>Parse</strong> (or Ctrl+Enter):</p>
+
+<textarea id="input" rows="18" cols="90" placeholder='{"search_metadata":{...},"statuses":[...]}'></textarea>
+
+<br>
+<button id="parseBtn">Parse</button>
+
+<hr>
+
+<h2>Output</h2>
+
+<pre id="output">— not parsed yet —</pre>
+
+<hr>
+
+<h2>How it works</h2>
+<ol>
+  <li>
+    The Zig file <code>example/wasm.zig</code> is compiled with
+    <code>zig build wasm</code> targeting <code>wasm32-freestanding+simd128</code>.
+  </li>
+  <li>
+    The resulting <code>zimdjson.wasm</code> exports four functions:<br>
+    <code>getInputPtr()</code>, <code>getInputLen()</code>,
+    <code>getOutputPtr()</code>, <code>parse(len)</code>.
+  </li>
+  <li>
+    JavaScript encodes the JSON as UTF-8 into the shared WASM memory via
+    <code>getInputPtr()</code>, calls <code>parse(len)</code>, then reads the
+    pretty-printed result back from <code>getOutputPtr()</code>.
+  </li>
+  <li>
+    <code>parse()</code> uses zimdjson's ondemand API with <code>asAny()</code>
+    to recursively traverse any JSON value — objects, arrays, strings, numbers,
+    booleans, and nulls — so it works on <em>any</em> valid JSON input.
+  </li>
+</ol>
+
+<script>
+  // ── WASM bootstrap ──────────────────────────────────────────────────────────
+
+  let wasm = null; // holds the instantiated WebAssembly module exports
+
+  async function initWasm() {
+    const result = await WebAssembly.instantiateStreaming(
+      fetch("zimdjson.wasm"),
+      { env: {} }   // freestanding – no imports needed
+    );
+    wasm = result.instance.exports;
+    document.getElementById("output").textContent =
+      "zimdjson.wasm loaded — ready to parse.";
+  }
+
+  // ── helpers ─────────────────────────────────────────────────────────────────
+
+  function parseJson(jsonText) {
+    if (!wasm) {
+      return "Error: WASM not loaded yet.";
+    }
+
+    const encoder = new TextEncoder();
+    const encoded = encoder.encode(jsonText);
+
+    const inputCap = wasm.getInputLen();
+    if (encoded.length > inputCap) {
+      return `Error: input is ${encoded.length} bytes, WASM buffer is only ${inputCap} bytes.`;
+    }
+
+    // Write into WASM memory
+    const inputPtr = wasm.getInputPtr();
+    const mem = new Uint8Array(wasm.memory.buffer);
+    mem.set(encoded, inputPtr);
+
+    // Parse
+    const outLen = wasm.parse(encoded.length);
+
+    // Read result
+    const outputPtr = wasm.getOutputPtr();
+    const decoder = new TextDecoder();
+    const resultBytes = new Uint8Array(wasm.memory.buffer, outputPtr, outLen);
+    return decoder.decode(resultBytes);
+  }
+
+  // ── UI event handlers ────────────────────────────────────────────────────────
+
+  document.getElementById("parseBtn").addEventListener("click", () => {
+    const json = document.getElementById("input").value.trim();
+    if (!json) {
+      document.getElementById("output").textContent = "Error: input is empty.";
+      return;
+    }
+    const t0 = performance.now();
+    const result = parseJson(json);
+    const t1 = performance.now();
+    document.getElementById("output").textContent =
+      result + "\n\n[parsed in " + (t1 - t0).toFixed(2) + " ms]";
+  });
+
+  document.getElementById("loadDefaultBtn").addEventListener("click", async () => {
+    document.getElementById("output").textContent = "Fetching data.json…";
+    try {
+      const resp = await fetch("data.json");
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      document.getElementById("input").value = text;
+      document.getElementById("output").textContent =
+        "data.json loaded (" + text.length + " chars). Click Parse.";
+    } catch (e) {
+      document.getElementById("output").textContent = "Error loading data.json: " + e.message;
+    }
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    document.getElementById("input").value = "";
+    document.getElementById("output").textContent = "— cleared —";
+  });
+
+  // Allow Ctrl+Enter in textarea to trigger parse
+  document.getElementById("input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      document.getElementById("parseBtn").click();
+    }
+  });
+
+  // ── init ─────────────────────────────────────────────────────────────────────
+  initWasm().catch(err => {
+    document.getElementById("output").textContent =
+      "Failed to load zimdjson.wasm: " + err.message +
+      "\n\nMake sure you are serving from an HTTP server (not file://).";
+  });
+</script>
+
+</body>
+</html>

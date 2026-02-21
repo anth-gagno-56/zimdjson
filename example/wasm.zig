@@ -1,4 +1,5 @@
-/// zimdjson WASM module
+/// zimdjson WASM module — generic JSON pretty-printer
+///
 /// Exports:
 ///   getInputPtr()  -> [*]u8   — write JSON bytes here before calling parse
 ///   getInputLen()  -> u32     — capacity of the input buffer
@@ -6,6 +7,8 @@
 ///   parse(len: u32) -> u32    — parse len bytes of input; returns result byte count (0 = error)
 const std = @import("std");
 const zimdjson = @import("zimdjson");
+
+const Parser = zimdjson.ondemand.FullParser(.default);
 
 // ── memory layout ────────────────────────────────────────────────────────────
 const INPUT_CAP = 2 * 1024 * 1024; //  2 MB  – JSON input
@@ -29,8 +32,8 @@ export fn getOutputPtr() [*]u8 {
 }
 
 /// Parse JSON in input_buf[0..len].
-/// Writes UTF-8 plain text to output_buf and returns its byte length.
-/// Returns 0 on any error (output_buf will then contain an error message).
+/// Writes a human-readable pretty-printed representation to output_buf.
+/// Returns the byte length written; on error writes an error message and still returns its length.
 export fn parse(len: u32) u32 {
     fba.reset();
     const allocator = fba.allocator();
@@ -44,10 +47,10 @@ export fn parse(len: u32) u32 {
     return n;
 }
 
-// ── implementation ────────────────────────────────────────────────────────────
+// ── generic pretty-printer ────────────────────────────────────────────────────
 
 fn parseJson(allocator: std.mem.Allocator, json: []const u8) !u32 {
-    var parser = zimdjson.ondemand.FullParser(.default).init;
+    var parser = Parser.init;
     defer parser.deinit(allocator);
 
     const document = try parser.parseFromSlice(allocator, json);
@@ -55,34 +58,79 @@ fn parseJson(allocator: std.mem.Allocator, json: []const u8) !u32 {
     var out = std.io.fixedBufferStream(&output_buf);
     const w = out.writer();
 
-    // ── search_metadata ───────────────────────────────────────────────────────
-    const count = try document.at("search_metadata").at("count").asUnsigned();
-    const completed = try document.at("search_metadata").at("completed_in").asDouble();
-
-    try w.print("search_metadata\n", .{});
-    try w.print("  count        : {d}\n", .{count});
-    try w.print("  completed_in : {d:.4}s\n\n", .{completed});
-
-    // ── statuses ──────────────────────────────────────────────────────────────
-    try w.print("statuses\n", .{});
-
-    var statuses = (try document.at("statuses").asArray()).iterator();
-    var idx: usize = 0;
-    while (try statuses.next()) |status| {
-        idx += 1;
-        const id = try status.at("id").asUnsigned();
-        const text = try status.at("text").asString();
-        const user_name = try status.at("user").at("name").asString();
-        const screen_name = try status.at("user").at("screen_name").asString();
-        const followers = try status.at("user").at("followers_count").asUnsigned();
-        const retweets = try status.at("retweet_count").asUnsigned();
-
-        try w.print("\n  [{d}] id            : {d}\n", .{ idx, id });
-        try w.print("       text          : {s}\n", .{text});
-        try w.print("       user          : {s} (@{s})\n", .{ user_name, screen_name });
-        try w.print("       followers     : {d}\n", .{followers});
-        try w.print("       retweet_count : {d}\n", .{retweets});
-    }
+    try printValue(w, document.asValue(), 0);
+    try w.writeByte('\n');
 
     return @intCast(out.pos);
+}
+
+fn printIndent(w: anytype, depth: usize) !void {
+    var i: usize = 0;
+    while (i < depth) : (i += 1) try w.writeAll("  ");
+}
+
+/// Recursively pretty-print a zimdjson ondemand Value.
+fn printValue(w: anytype, value: Parser.Value, depth: usize) !void {
+    const any = try value.asAny();
+    switch (any) {
+        .null => try w.writeAll("null"),
+        .bool => |b| try w.writeAll(if (b) "true" else "false"),
+        .number => |n| switch (n) {
+            .unsigned => |u| try w.print("{d}", .{u}),
+            .signed => |s| try w.print("{d}", .{s}),
+            .double => |d| try w.print("{d}", .{d}),
+        },
+        .string => |raw| {
+            const s = try raw.getTemporal();
+            try w.writeByte('"');
+            try writeEscaped(w, s);
+            try w.writeByte('"');
+        },
+        .array => |arr| {
+            try w.writeAll("[\n");
+            var it = arr.iterator();
+            var first = true;
+            while (try it.next()) |el| {
+                if (!first) try w.writeAll(",\n");
+                first = false;
+                try printIndent(w, depth + 1);
+                try printValue(w, el, depth + 1);
+            }
+            if (!first) try w.writeByte('\n');
+            try printIndent(w, depth);
+            try w.writeByte(']');
+        },
+        .object => |obj| {
+            try w.writeAll("{\n");
+            var it = obj.iterator();
+            var first = true;
+            while (try it.next()) |field| {
+                if (!first) try w.writeAll(",\n");
+                first = false;
+                try printIndent(w, depth + 1);
+                const key = try field.key.getTemporal();
+                try w.writeByte('"');
+                try writeEscaped(w, key);
+                try w.writeAll("\": ");
+                try printValue(w, field.value, depth + 1);
+            }
+            if (!first) try w.writeByte('\n');
+            try printIndent(w, depth);
+            try w.writeByte('}');
+        },
+    }
+}
+
+/// Write a string with JSON escape sequences for special characters.
+fn writeEscaped(w: anytype, s: []const u8) !void {
+    for (s) |c| {
+        switch (c) {
+            '"' => try w.writeAll("\\\""),
+            '\\' => try w.writeAll("\\\\"),
+            '\n' => try w.writeAll("\\n"),
+            '\r' => try w.writeAll("\\r"),
+            '\t' => try w.writeAll("\\t"),
+            else => try w.writeByte(c),
+        }
+    }
 }

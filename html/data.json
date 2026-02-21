@@ -1,0 +1,28 @@
+{
+  "search_metadata": {
+    "count": 100,
+    "completed_in": 0.035
+  },
+  "statuses": [
+    {
+      "id": 250075927172759552,
+      "text": "Aggressive Ponytail #freebandnames",
+      "user": {
+        "name": "Sean Cummings",
+        "screen_name": "sean_cummings",
+        "followers_count": 61
+      },
+      "retweet_count": 0
+    },
+    {
+      "id": 250075927172759553,
+      "text": "Learning to use zimdjson for fast JSON parsing!",
+      "user": {
+        "name": "Jane Developer",
+        "screen_name": "jane_dev",
+        "followers_count": 425
+      },
+      "retweet_count": 12
+    }
+  ]
+}

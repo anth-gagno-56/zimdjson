@@ -1,7 +1,9 @@
 const std = @import("std");
 const assert = std.debug.assert;
 
-pub const Limb = usize;
+/// Always use 64-bit limbs so the algorithm is correct on both 64-bit and
+/// 32-bit targets (e.g. wasm32 where usize == u32 would break the constants).
+pub const Limb = u64;
 pub const limb_bits = @sizeOf(Limb) * 8;
 const Self = @This();
 const capacity = 58; // ceil(log2(10 ** (max_big_digits + -min_pow10)) / 64)
