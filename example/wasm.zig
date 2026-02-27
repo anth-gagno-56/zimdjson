@@ -11,9 +11,9 @@ const zimdjson = @import("zimdjson");
 const Parser = zimdjson.ondemand.FullParser(.default);
 
 // ── memory layout ────────────────────────────────────────────────────────────
-const INPUT_CAP = 2 * 1024 * 1024; //  2 MB  – JSON input
-const OUTPUT_CAP = 2 * 1024 * 1024; //  2 MB  – text output
-const HEAP_CAP = 8 * 1024 * 1024; //  8 MB  – parser scratch space
+const INPUT_CAP = 500 * 1024 * 1024; //  2 MB  – JSON input
+const OUTPUT_CAP = 500 * 1024 * 1024; //  2 MB  – text output
+const HEAP_CAP = 1000 * 1024 * 1024; //  8 MB  – parser scratch space
 
 var input_buf: [INPUT_CAP]u8 = undefined;
 var output_buf: [OUTPUT_CAP]u8 = undefined;

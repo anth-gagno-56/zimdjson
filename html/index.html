@@ -27,7 +27,10 @@
   <button id="clearBtn">Clear</button>
 </p>
 
-<p>Paste any JSON below, then click <strong>Parse</strong> (or Ctrl+Enter):</p>
+<p>Upload a JSON file:</p>
+<input type="file" id="fileInput" accept=".geojson,.json,application/json">
+
+<p>…or paste any JSON below, then click <strong>Parse</strong> (or Ctrl+Enter):</p>
 
 <textarea id="input" rows="18" cols="90" placeholder='{"search_metadata":{...},"statuses":[...]}'></textarea>
 
@@ -141,7 +144,23 @@
 
   document.getElementById("clearBtn").addEventListener("click", () => {
     document.getElementById("input").value = "";
+    document.getElementById("fileInput").value = "";
     document.getElementById("output").textContent = "— cleared —";
+  });
+
+  document.getElementById("fileInput").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      document.getElementById("input").value = ev.target.result;
+      document.getElementById("output").textContent =
+        `${file.name} loaded (${file.size} bytes). Click Parse.`;
+    };
+    reader.onerror = () => {
+      document.getElementById("output").textContent = "Error reading file.";
+    };
+    reader.readAsText(file);
   });
 
   // Allow Ctrl+Enter in textarea to trigger parse
